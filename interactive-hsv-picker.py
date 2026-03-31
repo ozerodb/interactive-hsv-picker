@@ -19,6 +19,16 @@ def _get_args():
     return parser.parse_args()
 
 
+def _print_hsv_values(window_name):
+    Hmin = cv2.getTrackbarPos("Hmin", window_name)
+    Smin = cv2.getTrackbarPos("Smin", window_name)
+    Vmin = cv2.getTrackbarPos("Vmin", window_name)
+    Hmax = cv2.getTrackbarPos("Hmax", window_name)
+    Smax = cv2.getTrackbarPos("Smax", window_name)
+    Vmax = cv2.getTrackbarPos("Vmax", window_name)
+    print(f"HSV range -> lower: ({Hmin}, {Smin}, {Vmin})  upper: ({Hmax}, {Smax}, {Vmax})")
+
+
 def _main():
     # Parse arguments
     args = _get_args()
@@ -52,10 +62,17 @@ def _main():
         raise SystemExit
 
     is_image = False
-    if args.source.isnumeric():
+    # Try to parse source as a device index (supports negative indices too)
+    try:
         args.source = int(args.source)
-    elif os.path.splitext(args.source)[1] in supported_image_ext:
-        is_image = True
+    except ValueError:
+        ext = os.path.splitext(args.source)[1].lower()
+        if ext in supported_image_ext:
+            is_image = True
+        # Check that the file actually exists before attempting to open it
+        if not os.path.isfile(args.source):
+            print(f"Error: file not found: {args.source}")
+            raise SystemExit
 
     # Instantiate the capture object
     cap = cv2.VideoCapture(args.source)
@@ -74,14 +91,16 @@ def _main():
     cv2.createTrackbar("Hmin", window_name, 0, 180, _nothing)
     cv2.createTrackbar("Smin", window_name, 0, 255, _nothing)
     cv2.createTrackbar("Vmin", window_name, 0, 255, _nothing)
-    cv2.createTrackbar("hMAX", window_name, 0, 180, _nothing)
-    cv2.createTrackbar("sMAX", window_name, 0, 255, _nothing)
-    cv2.createTrackbar("vMAX", window_name, 0, 255, _nothing)
+    cv2.createTrackbar("Hmax", window_name, 0, 180, _nothing)
+    cv2.createTrackbar("Smax", window_name, 0, 255, _nothing)
+    cv2.createTrackbar("Vmax", window_name, 0, 255, _nothing)
 
     # Set default value for max HSV trackbars
-    cv2.setTrackbarPos("hMAX", window_name, 180)
-    cv2.setTrackbarPos("sMAX", window_name, 255)
-    cv2.setTrackbarPos("vMAX", window_name, 255)
+    cv2.setTrackbarPos("Hmax", window_name, 180)
+    cv2.setTrackbarPos("Smax", window_name, 255)
+    cv2.setTrackbarPos("Vmax", window_name, 255)
+
+    print("Controls: 'q' or Esc to quit, 's' to print current HSV values")
 
     frame = None
     while True:
@@ -92,6 +111,8 @@ def _main():
         else:
             ret, frame = cap.read()
         if not ret:
+            if frame is None:
+                print("Error: failed to read frame from source.")
             break
 
         # Get current positions of all trackbars
@@ -99,13 +120,13 @@ def _main():
         Hmin = cv2.getTrackbarPos("Hmin", window_name)
         Smin = cv2.getTrackbarPos("Smin", window_name)
         Vmin = cv2.getTrackbarPos("Vmin", window_name)
-        hMAX = cv2.getTrackbarPos("hMAX", window_name)
-        sMAX = cv2.getTrackbarPos("sMAX", window_name)
-        vMAX = cv2.getTrackbarPos("vMAX", window_name)
+        Hmax = cv2.getTrackbarPos("Hmax", window_name)
+        Smax = cv2.getTrackbarPos("Smax", window_name)
+        Vmax = cv2.getTrackbarPos("Vmax", window_name)
 
         # Set minimum and maximum HSV values to display
         lower = (Hmin, Smin, Vmin)
-        upper = (hMAX, sMAX, vMAX)
+        upper = (Hmax, Smax, Vmax)
 
         # Convert to HSV colorspace and perform thresholding
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -116,18 +137,21 @@ def _main():
         margin = np.ones((frame.shape[0], 5, 3), dtype="uint8") * 255
 
         if show_mask:
-            mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-            output = cv2.hconcat([frame, margin, mask, margin, result])
+            mask_bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+            output = cv2.hconcat([frame, margin, mask_bgr, margin, result])
         else:
             output = cv2.hconcat([frame, margin, result])
 
         # Display result image
         cv2.imshow(window_name, output)
 
-        # Quit the program using q or Esc
+        # Quit with q or Esc; print current values with s
         k = cv2.waitKey(1)
-        if k == 27 or k == 113:
+        if k == 27 or k == ord('q'):
+            _print_hsv_values(window_name)
             break
+        elif k == ord('s'):
+            _print_hsv_values(window_name)
 
 
 if __name__ == "__main__":
